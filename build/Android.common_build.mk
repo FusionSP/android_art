@@ -186,8 +186,7 @@ ifeq ($(ART_SEA_IR_MODE),true)
 endif
 
 art_non_debug_cflags := \
-  -O3 \
-  -lto
+  -O3
 
 art_host_non_debug_cflags := \
   $(art_non_debug_cflags)
@@ -204,9 +203,11 @@ endif
 # FIXME: upstream LLVM has a vectorizer bug that needs to be fixed
 ART_TARGET_CLANG_CFLAGS_arm64 += \
   -fno-vectorize
-# Force non-debug always
+
 art_debug_cflags := \
-  $(art_non_debug_cflags)
+  -O1 \
+  -DDYNAMIC_ANNOTATIONS_ENABLED=1 \
+  -UNDEBUG
 
 #ifndef LIBART_IMG_HOST_BASE_ADDRESS
  # $(error LIBART_IMG_HOST_BASE_ADDRESS unset)
