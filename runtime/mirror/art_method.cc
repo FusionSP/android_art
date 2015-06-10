@@ -48,6 +48,8 @@ extern "C" void art_quick_invoke_static_stub(ArtMethod*, uint32_t*, uint32_t, Th
 
 // TODO: get global references for these
 GcRoot<Class> ArtMethod::java_lang_reflect_ArtMethod_;
+jclass ArtMethod::xposed_callback_class = NULL;
+jmethodID ArtMethod::xposed_callback_method = NULL;
 
 ArtMethod* ArtMethod::FromReflectedMethod(const ScopedObjectAccessAlreadyRunnable& soa,
                                           jobject jlr_method) {
@@ -365,6 +367,51 @@ void ArtMethod::UnregisterNative(Thread* self) {
   CHECK(IsNative() && !IsFastNative()) << PrettyMethod(this);
   // restore stub to lookup native pointer via dlsym
   RegisterNative(self, GetJniDlsymLookupStub(), false);
+}
+
+void ArtMethod::EnableXposedHook(JNIEnv* env, jobject additional_info) {
+  if (IsXposedHookedMethod()) {
+    // Already hooked
+    return;
+  } else if (IsXposedOriginalMethod()) {
+    // This should never happen
+    XLOG(FATAL) << "You cannot hook the original method";
+  } else if (IsNative()) {
+    // Hooking native methods should hopefully work fine, but needs testing
+    XLOG(INFO) << "Not hooking native method " << PrettyMethod(this);
+    return;
+  }
+
+
+  ScopedObjectAccess soa(env);
+
+  // Create a backup of the ArtMethod object
+  ArtMethod* backup_method = down_cast<ArtMethod*>(Clone(soa.Self()));
+  // Set private flag to avoid virtual table lookups during invocation
+  backup_method->SetAccessFlags(backup_method->GetAccessFlags() | kAccPrivate | kAccXposedOriginalMethod);
+
+  // Create a Method/Constructor object for the backup ArtMethod object
+  jobject reflect_method;
+  if (IsConstructor()) {
+    reflect_method = env->AllocObject(WellKnownClasses::java_lang_reflect_Constructor);
+  } else {
+    reflect_method = env->AllocObject(WellKnownClasses::java_lang_reflect_Method);
+  }
+  env->SetObjectField(reflect_method, WellKnownClasses::java_lang_reflect_AbstractMethod_artMethod,
+      env->NewGlobalRef(soa.AddLocalReference<jobject>(backup_method)));
+
+  // Save extra information in a separate structure, stored instead of the native method
+  XposedHookInfo* hookInfo = reinterpret_cast<XposedHookInfo*>(calloc(1, sizeof(XposedHookInfo)));
+  hookInfo->reflectedMethod = env->NewGlobalRef(reflect_method);
+  hookInfo->additionalInfo = env->NewGlobalRef(additional_info);
+  hookInfo->originalMethod = backup_method;
+  SetEntryPointFromJni(reinterpret_cast<uint8_t*>(hookInfo));
+
+  SetEntryPointFromQuickCompiledCode(GetQuickProxyInvokeHandler());
+  SetEntryPointFromInterpreter(artInterpreterToCompiledCodeBridge);
+
+  // Adjust access flags
+  SetAccessFlags((GetAccessFlags() & ~kAccNative) | kAccXposedHookedMethod);
 }
 
 }  // namespace mirror

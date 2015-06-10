@@ -367,7 +367,7 @@ inline QuickMethodFrameInfo ArtMethod::GetQuickFrameInfo() {
   // Direct method is cloned from original java.lang.reflect.Proxy class together with code
   // and as a result it is executed as usual quick compiled method without any stubs.
   // So the frame info should be returned as it is a quick method not a stub.
-  if (UNLIKELY(IsAbstract()) || UNLIKELY(IsProxyMethod() && !IsDirect())) {
+  if (UNLIKELY(IsAbstract()) || UNLIKELY(IsProxyMethod() && !IsDirect()) || UNLIKELY(IsXposedHookedMethod())) {
     return runtime->GetCalleeSaveMethodFrameInfo(Runtime::kRefsAndArgs);
   }
   if (UNLIKELY(IsRuntimeMethod())) {
@@ -531,14 +531,14 @@ inline mirror::DexCache* ArtMethod::GetDexCache() {
 }
 
 inline bool ArtMethod::IsProxyMethod() {
-  return GetDeclaringClass()->IsProxyClass();
+  return GetDeclaringClass()->IsProxyClass() || IsXposedHookedMethod();
 }
 
 inline ArtMethod* ArtMethod::GetInterfaceMethodIfProxy() {
-  if (LIKELY(!IsProxyMethod())) {
+  mirror::Class* klass = GetDeclaringClass();
+  if (LIKELY(!klass->IsProxyClass())) {
     return this;
   }
-  mirror::Class* klass = GetDeclaringClass();
   mirror::ArtMethod* interface_method = GetDexCacheResolvedMethods()->Get(GetDexMethodIndex());
   DCHECK(interface_method != nullptr);
   DCHECK_EQ(interface_method,

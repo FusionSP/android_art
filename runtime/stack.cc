@@ -127,7 +127,7 @@ mirror::Object* StackVisitor::GetThisObject() const {
     } else {
       return cur_shadow_frame_->GetVRegReference(0);
     }
-  } else if (m->IsProxyMethod()) {
+  } else if (m->IsProxyMethod() && !m->IsXposedHookedMethod()) {
     if (cur_quick_frame_ != nullptr) {
       return artQuickGetProxyThisObject(cur_quick_frame_);
     } else {

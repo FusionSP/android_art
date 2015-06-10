@@ -37,6 +37,12 @@ class ScopedObjectAccessAlreadyRunnable;
 class StringPiece;
 class ShadowFrame;
 
+struct XposedHookInfo {
+  jobject reflectedMethod;
+  jobject additionalInfo;
+  mirror::ArtMethod* originalMethod;
+};
+
 namespace mirror {
 
 typedef void (EntryPointFromInterpreter)(Thread* self, MethodHelper& mh,
@@ -315,6 +321,7 @@ class MANAGED ArtMethod FINAL : public Object {
   template <VerifyObjectFlags kVerifyFlags = kDefaultVerifyFlags>
   void SetEntryPointFromQuickCompiledCode(const void* entry_point_from_quick_compiled_code)
       SHARED_LOCKS_REQUIRED(Locks::mutator_lock_) {
+    DCHECK(!IsXposedHookedMethod());
     CheckObjectSizeEqualsMirrorSize();
     SetEntryPointFromQuickCompiledCodePtrSize(entry_point_from_quick_compiled_code,
                                               sizeof(void*));
@@ -323,6 +330,7 @@ class MANAGED ArtMethod FINAL : public Object {
   ALWAYS_INLINE void SetEntryPointFromQuickCompiledCodePtrSize(
       const void* entry_point_from_quick_compiled_code, size_t pointer_size)
       SHARED_LOCKS_REQUIRED(Locks::mutator_lock_) {
+    DCHECK(!IsXposedHookedMethod());
     SetFieldPtrWithSize<false, true, kVerifyFlags>(
         EntryPointFromQuickCompiledCodeOffset(pointer_size), entry_point_from_quick_compiled_code,
         pointer_size);
@@ -541,6 +549,28 @@ class MANAGED ArtMethod FINAL : public Object {
   mirror::DexCache* GetDexCache() SHARED_LOCKS_REQUIRED(Locks::mutator_lock_);
 
   ALWAYS_INLINE ArtMethod* GetInterfaceMethodIfProxy() SHARED_LOCKS_REQUIRED(Locks::mutator_lock_);
+
+  // Xposed
+  bool IsXposedHookedMethod() SHARED_LOCKS_REQUIRED(Locks::mutator_lock_) {
+    return (GetAccessFlags() & kAccXposedHookedMethod) != 0;
+  }
+
+  bool IsXposedOriginalMethod() SHARED_LOCKS_REQUIRED(Locks::mutator_lock_) {
+      return (GetAccessFlags() & kAccXposedOriginalMethod) != 0;
+  }
+
+  void EnableXposedHook(JNIEnv* env, jobject additional_info) SHARED_LOCKS_REQUIRED(Locks::mutator_lock_);
+
+  XposedHookInfo* GetXposedHookInfo() SHARED_LOCKS_REQUIRED(Locks::mutator_lock_) {
+    return reinterpret_cast<XposedHookInfo*>(GetEntryPointFromJni());
+  }
+
+  ArtMethod* GetXposedOriginalMethod() SHARED_LOCKS_REQUIRED(Locks::mutator_lock_) {
+    return GetXposedHookInfo()->originalMethod;
+  }
+
+  static jclass xposed_callback_class;
+  static jmethodID xposed_callback_method;
 
   static size_t SizeWithoutPointerFields(size_t pointer_size) {
     size_t total = sizeof(ArtMethod) - sizeof(PtrSizedFields);

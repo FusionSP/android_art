@@ -37,6 +37,10 @@ class PACKED(4) OatHeader {
   static constexpr const char* kDex2OatHostKey = "dex2oat-host";
   static constexpr const char* kPicKey = "pic";
 
+  static constexpr const char* kOriginalOatChecksumKey = "original-oat-checksum";
+  static constexpr const char* kXposedOatVersionKey = "xposed-oat-version";
+  static constexpr const char* kXposedOatCurrentVersion = "2";
+
   static OatHeader* Create(InstructionSet instruction_set,
                            const InstructionSetFeatures& instruction_set_features,
                            const std::vector<const DexFile*>* dex_files,
@@ -44,9 +48,13 @@ class PACKED(4) OatHeader {
                            uint32_t image_file_location_oat_data_begin,
                            const SafeMap<std::string, std::string>* variable_data);
 
+  static OatHeader* FromFile(const std::string& filename, std::string* error_msg);
+
   bool IsValid() const;
+  bool IsXposedOatVersionValid() const;
   const char* GetMagic() const;
   uint32_t GetChecksum() const;
+  uint32_t GetOriginalChecksum(bool fallback) const;
   void UpdateChecksum(const void* data, size_t length);
   uint32_t GetDexFileCount() const {
     DCHECK(IsValid());
@@ -107,6 +115,8 @@ class PACKED(4) OatHeader {
   bool IsPic() const;
 
  private:
+  OatHeader() {}
+
   OatHeader(InstructionSet instruction_set,
             const InstructionSetFeatures& instruction_set_features,
             const std::vector<const DexFile*>* dex_files,
